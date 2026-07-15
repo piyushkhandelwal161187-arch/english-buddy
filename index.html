@@ -244,9 +244,9 @@
 
     .recognition-box { min-height: 48px; margin-top: 14px; padding: 12px; border-radius: 16px; background: #f5f3fa; color: var(--muted); font-weight: 700; }
     .recognition-box.listening { background: var(--blue-soft); color: #175a9f; animation: listening-pulse 1.1s infinite alternate; }
-    .speech-countdown { color: #fff !important; font-size: 1.08rem; letter-spacing: .02em; background: linear-gradient(135deg, var(--purple), var(--pink), #ff9f43) !important; background-size: 200% 200% !important; animation: countdown-colors .45s ease-in-out infinite alternate !important; }
+    .speak-now-pulse { animation: speak-now-pulse .65s ease-out 1 !important; }
     @keyframes listening-pulse { to { box-shadow: inset 0 0 0 3px rgba(49,132,228,.18); } }
-    @keyframes countdown-colors { to { background-position: 100% 100%; transform: scale(1.015); } }
+    @keyframes speak-now-pulse { 45% { transform: scale(1.06); box-shadow: 0 0 0 12px rgba(49,132,228,.13); } }
 
     .word-results { display: flex; flex-wrap: wrap; justify-content: center; gap: 7px; margin-top: 14px; }
     .word-chip { padding: 7px 9px; border-radius: 11px; font-weight: 900; }
@@ -333,6 +333,26 @@
     .big-mic:disabled { filter: grayscale(.45); cursor: not-allowed; opacity: .55; }
     .mic-caption { min-height: 22px; margin: 0; color: var(--muted); font-weight: 900; text-align: center; }
     .chat-actions { display: flex; justify-content: space-between; gap: 8px; margin-top: 7px; }
+    .quick-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 9px 0 2px; }
+
+    .spelling-launch { display: flex; align-items: center; justify-content: space-between; gap: 13px; margin-bottom: 14px; padding: 16px; background: linear-gradient(135deg, #fff7ce, #fff); }
+    .spelling-launch h3, .spelling-launch p { margin: 0; }
+    .spelling-launch p { margin-top: 3px; color: var(--muted); font-size: .82rem; font-weight: 700; }
+    .spelling-test { position: fixed; z-index: 60; inset: 0; overflow-y: auto; padding: max(18px, env(safe-area-inset-top)) 14px max(18px, env(safe-area-inset-bottom)); background: linear-gradient(160deg, #f8f5ff, #fff7d8); }
+    .spelling-card { width: min(100%, 620px); margin: 0 auto; padding: 20px; text-align: center; }
+    .spelling-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .spelling-top h2 { margin: 0; }
+    .spelling-prompt { margin: 30px 0 8px; color: var(--purple-dark); font-size: clamp(1.35rem, 6vw, 2rem); }
+    .spelling-mask { min-height: 46px; margin: 0; color: var(--muted); font-size: 2rem; letter-spacing: .35em; }
+    .spelling-mic { margin: 18px auto 12px; }
+    .spelling-feedback { min-height: 70px; margin-top: 15px; }
+    .spelling-letters { display: flex; flex-wrap: wrap; justify-content: center; gap: 7px; margin: 12px 0; }
+    .spelling-letter { display: grid; place-items: center; min-width: 38px; height: 44px; padding: 0 7px; border-radius: 11px; font-size: 1.35rem; font-weight: 900; text-transform: uppercase; }
+    .spelling-letter.good { background: var(--green-soft); color: #08714e; }
+    .spelling-letter.missed { background: var(--red-soft); color: #ae3146; }
+    .spelling-summary h3 { margin-bottom: 5px; font-size: 1.6rem; }
+    .spelling-history { display: grid; gap: 7px; margin-top: 12px; }
+    .spelling-history-row { padding: 10px 12px; border-radius: 13px; background: #f5f3fa; font-size: .8rem; }
 
     .stats-hero { display: grid; grid-template-columns: 1.25fr .75fr; gap: 10px; }
     .big-stat { padding: 20px; background: linear-gradient(135deg, #ffc94a, #ffdf7b); color: #604200; }
@@ -547,6 +567,11 @@
         </div>
         <div class="pack-scroller" id="packList" aria-label="Practice packs"></div>
 
+        <div class="card spelling-launch" id="spellingLaunchCard" hidden>
+          <div><h3>Spelling Test 🔤</h3><p>Listen carefully and spell each word aloud.</p></div>
+          <button class="btn btn-primary btn-small" id="startSpellingBtn" type="button">Start test</button>
+        </div>
+
         <div class="card practice-card">
           <div class="lesson-meta">
             <span id="itemCounter">1 of 1</span>
@@ -597,6 +622,7 @@
             <p class="mic-caption" id="buddyMicCaption">Tap to talk</p>
           </div>
           <div class="notice" id="buddySpeechNotice">Speech recognition needs internet. If it cannot hear you, check Chrome's microphone permission.</div>
+          <div class="quick-actions" id="buddyQuickActions"></div>
           <div class="chat-actions">
             <button class="btn btn-small btn-outline" id="replayBuddyBtn" type="button">🔊 Replay Buddy</button>
             <button class="btn btn-small btn-outline" id="newChatBtn" type="button">✨ New chat</button>
@@ -788,6 +814,13 @@
               <summary>📝 Add assignments / अभ्यास जोड़ें</summary>
               <div class="settings-body">
                 <div class="field">
+                  <label for="packTypeInput">Pack type / पैक का प्रकार</label>
+                  <select id="packTypeInput">
+                    <option value="practice">Practice pack / अभ्यास पैक</option>
+                    <option value="spelling">Spelling list / स्पेलिंग सूची</option>
+                  </select>
+                </div>
+                <div class="field">
                   <label for="packNameInput">Pack name / पैक का नाम</label>
                   <input id="packNameInput" maxlength="45" placeholder="Example: School words / जैसे: स्कूल के शब्द">
                 </div>
@@ -804,6 +837,11 @@
             <details class="card settings-card wide">
               <summary>📊 Progress dashboard / प्रगति डैशबोर्ड</summary>
               <div class="settings-body" id="parentDashboard"></div>
+            </details>
+
+            <details class="card settings-card wide">
+              <summary>🔤 Spelling test results / स्पेलिंग टेस्ट नतीजे</summary>
+              <div class="settings-body" id="spellingHistory"></div>
             </details>
 
             <details class="card settings-card wide">
@@ -851,6 +889,26 @@
         </div>
       </section>
     </main>
+
+    <section class="spelling-test" id="spellingTest" aria-labelledby="spellingTitle" hidden>
+      <div class="card spelling-card">
+        <div class="spelling-top">
+          <h2 id="spellingTitle">Spelling Test 🔤</h2>
+          <button class="btn btn-danger btn-small" id="stopSpellingBtn" type="button">Stop</button>
+        </div>
+        <div class="lesson-meta">
+          <span id="spellingCounter">1 of 5</span>
+          <div class="lesson-progress" aria-hidden="true"><span id="spellingProgressBar"></span></div>
+          <span id="spellingScore">0 correct</span>
+        </div>
+        <h3 class="spelling-prompt">🔤 Spell the word you heard</h3>
+        <p class="spelling-mask" aria-label="The spelling is hidden">•••••</p>
+        <button class="big-mic spelling-mic" id="spellingMicBtn" type="button" aria-label="Spell the word"><span aria-hidden="true">🎙️</span></button>
+        <p class="mic-caption" id="spellingMicCaption" aria-live="polite">Listen carefully…</p>
+        <div class="spelling-feedback" id="spellingFeedback" aria-live="polite"></div>
+        <button class="btn btn-green btn-wide" id="nextSpellingBtn" type="button" hidden>Next word ➡️</button>
+      </div>
+    </section>
   </div>
 
   <nav class="bottom-nav" aria-label="Main navigation">
@@ -957,7 +1015,8 @@
       { id: 'streak', icon: '🔥', name: 'On Fire', hint: 'Reach a 3-day streak', earned: () => state.streak.count >= 3 },
       { id: 'story', icon: '📖', name: 'Story Star', hint: 'Practise a story', earned: () => getPackAttempts('read-a-story') > 0 },
       { id: 'explorer', icon: '🦋', name: 'Word Explorer', hint: 'Try 15 different items', earned: () => countTriedItems() >= 15 },
-      { id: 'assignment', icon: '🏫', name: 'Homework Hero', hint: 'Complete a school assignment', earned: () => state.assignmentHistory.some((assignment) => assignment.status === 'done') }
+      { id: 'assignment', icon: '🏫', name: 'Homework Hero', hint: 'Complete a school assignment', earned: () => state.assignmentHistory.some((assignment) => assignment.status === 'done') },
+      { id: 'spelling', icon: '🔤', name: 'Spelling Star', hint: 'Get full marks in a spelling test', earned: () => state.spellingResults.some((result) => result.correct === result.total && result.total > 0) }
     ];
 
     const $ = (selector) => document.querySelector(selector);
@@ -985,6 +1044,8 @@
         customPacks: [],
         activeAssignmentBrief: null,
         assignmentHistory: [],
+        spellingResults: [],
+        spellingWrongWords: [],
         daily: { date: localDateKey(), buddySeconds: 0, buddyLocked: false },
         conversations: [],
         activeConversationId: null,
@@ -1010,6 +1071,8 @@
         merged.customPacks = Array.isArray(parsed.customPacks) ? parsed.customPacks : [];
         merged.activeAssignmentBrief = parsed.activeAssignmentBrief && typeof parsed.activeAssignmentBrief === 'object' ? parsed.activeAssignmentBrief : null;
         merged.assignmentHistory = Array.isArray(parsed.assignmentHistory) ? parsed.assignmentHistory : [];
+        merged.spellingResults = Array.isArray(parsed.spellingResults) ? parsed.spellingResults : [];
+        merged.spellingWrongWords = Array.isArray(parsed.spellingWrongWords) ? parsed.spellingWrongWords.map(String) : [];
         merged.conversations = Array.isArray(parsed.conversations) ? parsed.conversations : [];
         merged.errors = Array.isArray(parsed.errors) ? parsed.errors : [];
         merged.settings.topics = Array.isArray(merged.settings.topics) ? merged.settings.topics : defaults.settings.topics;
@@ -1042,6 +1105,7 @@
     let microphonePermissionStatus = null;
     let micTestLines = [];
     let lastTtsFinishedAt = 0;
+    let spellingSession = null;
 
     function loadMicLog() {
       try {
@@ -1110,8 +1174,33 @@
     }
 
     function allPacks() {
-      const custom = state.customPacks.map((pack) => ({ ...pack, emoji: pack.emoji || '✏️', kind: 'custom' }));
+      const custom = state.customPacks
+        .filter((pack) => pack.kind !== 'spelling')
+        .map((pack) => ({ ...pack, emoji: pack.emoji || '✏️', kind: 'custom' }));
       return [...BUILTIN_PACKS, ...custom];
+    }
+
+    function activeAssignmentSpellingWords() {
+      const assignment = state.activeAssignmentBrief;
+      return assignment?.status === 'active' && Array.isArray(assignment.spelling_words)
+        ? assignment.spelling_words
+        : [];
+    }
+
+    function availableSpellingWords() {
+      const customWords = state.customPacks
+        .filter((pack) => pack.kind === 'spelling')
+        .flatMap((pack) => Array.isArray(pack.items) ? pack.items : []);
+      const seen = new Set();
+      return [...state.spellingWrongWords, ...activeAssignmentSpellingWords(), ...customWords]
+        .map((word) => String(word).trim())
+        .filter((word) => {
+          const key = normaliseSpellingWord(word);
+          if (!key || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .slice(0, 20);
     }
 
     function getPack(packId = state.practice.packId) {
@@ -1208,6 +1297,7 @@
       $('#headerStarCount').textContent = String(state.totalStars);
       $('#practiceStreak').textContent = `🔥 ${state.streak.count}`;
       renderPackList();
+      $('#spellingLaunchCard').hidden = availableSpellingWords().length === 0;
       renderPracticeItem();
     }
 
@@ -1338,6 +1428,20 @@
         setSpeechErrorMessage(noticeElement, friendly, errorCode);
       }
       return friendly;
+    }
+
+    function rebuildCumulativeTranscript(results) {
+      const finalParts = [];
+      let latestInterim = '';
+      for (let index = 0; index < results.length; index += 1) {
+        const result = results[index];
+        const transcript = String(result?.[0]?.transcript || '').trim();
+        if (!transcript) continue;
+        if (result.isFinal) finalParts.push(transcript);
+        else latestInterim = transcript;
+      }
+      if (latestInterim) finalParts.push(latestInterim);
+      return finalParts.join(' ').replace(/\s+/g, ' ').trim();
     }
 
     const recognitionController = (() => {
@@ -1473,7 +1577,6 @@
         instance.onresult = (event) => {
           if (!isCurrentAttempt()) return;
           scheduleSilenceStop(id, 'onresult');
-          const batch = [];
           resultEventSequence += 1;
           for (let index = 0; index < event.results.length; index += 1) {
             const result = event.results[index];
@@ -1484,36 +1587,19 @@
               emitLog('onresult', `index=${index} alternative=${alternative} isFinal=${Boolean(result.isFinal)} confidence=${confidence.toFixed(3)} transcript=${JSON.stringify(transcript)}`);
             }
           }
-          for (let alternative = 0; alternative < 3; alternative += 1) {
-            const parts = [];
-            let confidenceTotal = 0;
-            let confidenceCount = 0;
-            let finalCount = 0;
-            for (let index = 0; index < event.results.length; index += 1) {
-              const result = event.results[index];
-              const item = result[alternative] || result[0];
-              const transcript = String(item?.transcript || '').trim();
-              if (transcript) parts.push(transcript);
-              if (Number(item?.confidence) > 0) {
-                confidenceTotal += Number(item.confidence);
-                confidenceCount += 1;
-              }
-              if (result.isFinal) finalCount += 1;
-            }
-            const transcript = parts.join(' ').replace(/\s+/g, ' ').trim();
-            if (!transcript || batch.some((item) => item.transcript === transcript)) continue;
-            const confidence = confidenceCount ? confidenceTotal / confidenceCount : 0;
-            const wordCount = transcript.split(/\s+/).length;
-            batch.push({
-              transcript,
-              confidence,
-              finalCount,
-              wordCount,
-              alternative,
-              eventSequence: resultEventSequence
-            });
-          }
-          resultCandidates.push(...batch);
+          const transcript = rebuildCumulativeTranscript(event.results);
+          const finalResults = Array.from(event.results).filter((result) => result.isFinal);
+          const confidences = finalResults
+            .map((result) => Number(result?.[0]?.confidence))
+            .filter((confidence) => confidence > 0);
+          resultCandidates = transcript ? [{
+            transcript,
+            confidence: confidences.length ? confidences.reduce((sum, confidence) => sum + confidence, 0) / confidences.length : 0,
+            finalCount: finalResults.length,
+            wordCount: transcript.split(/\s+/).length,
+            alternative: 0,
+            eventSequence: resultEventSequence
+          }] : [];
           const interim = bestTranscript();
           emitLog('decision', `best transcript so far: ${JSON.stringify(interim)}`);
           callbacks.onInterim?.(interim);
@@ -1601,14 +1687,8 @@
           emitLog('decision', 'speechSynthesis unavailable; waiting 500ms');
         }
         await delay(500);
-        for (const prompt of ['Get ready… 3', 'Get ready… 2', 'Get ready… 1']) {
-          if (id !== sessionId || cancelled) return false;
-          callbacks.onCountdown?.(prompt);
-          await delay(300);
-        }
         if (id !== sessionId || cancelled) return false;
-        callbacks.onCountdown?.('Speak!');
-        setState('starting', 'countdown complete');
+        setState('starting', 'post-TTS gap complete');
         createAndStart(id);
         return true;
       }
@@ -1658,35 +1738,34 @@
 
     function startSpeechFlow(options) {
       const promptElement = options.promptElement;
-      const clearCountdown = () => promptElement?.classList.remove('speech-countdown');
+      const pulseElement = options.pulseElement;
+      const clearPulse = () => pulseElement?.classList.remove('speak-now-pulse');
       listenForSpeech({
         ...options,
         onPrepare: () => {
           options.onPrepare?.();
-          if (promptElement) {
-            promptElement.classList.add('speech-countdown');
-            promptElement.textContent = 'Get ready…';
-          }
-        },
-        onCountdown: (prompt) => {
-          if (promptElement) promptElement.textContent = prompt;
-          options.onCountdown?.(prompt);
         },
         onStart: () => {
-          clearCountdown();
+          clearPulse();
           options.onStart?.();
+          if (promptElement) promptElement.textContent = 'Speak now!';
+          if (pulseElement) {
+            void pulseElement.offsetWidth;
+            pulseElement.classList.add('speak-now-pulse');
+            setTimeout(clearPulse, 700);
+          }
         },
         onRetry: (prompt) => {
-          clearCountdown();
+          clearPulse();
           if (promptElement) promptElement.textContent = prompt;
           options.onRetry?.(prompt);
         },
         onEnd: () => {
-          clearCountdown();
+          clearPulse();
           options.onEnd?.();
         },
         onError: (code, friendly) => {
-          clearCountdown();
+          clearPulse();
           options.onError?.(code, friendly);
         }
       });
@@ -1880,6 +1959,7 @@
         flowName: 'practice',
         target: getPack().items[state.practice.itemIndex],
         promptElement: $('#practiceHeard'),
+        pulseElement: $('#yourTurnBtn'),
         noticeElement: $('#speechNotice'),
         onPrepare: () => setPracticeControls(true),
         onStart: () => setPracticeControls(true),
@@ -2119,6 +2199,11 @@ SAFETY: Keep everything gentle and suitable for ${profile.schoolClass}. Never di
       if (!hasKey) return;
       updateBuddyTimer();
       renderBuddyConversation();
+      const assignmentWords = activeAssignmentSpellingWords();
+      $('#buddyQuickActions').innerHTML = assignmentWords.length
+        ? '<button class="btn btn-small btn-yellow" id="buddySpellingBtn" type="button">Take my spelling test! 🔤</button>'
+        : '';
+      $('#buddySpellingBtn')?.addEventListener('click', startSpellingTest);
       const locked = state.daily.buddyLocked || remainingBuddySeconds() <= 0;
       const savedFile = location.protocol === 'file:';
       const conversation = getActiveConversation();
@@ -2168,6 +2253,7 @@ SAFETY: Keep everything gentle and suitable for ${profile.schoolClass}. Never di
       startSpeechFlow({
         flowName: 'buddy',
         promptElement: $('#buddyMicCaption'),
+        pulseElement: $('#buddyMicBtn'),
         noticeElement: $('#buddySpeechNotice'),
         onPrepare: () => setBuddyListening(true),
         onStart: () => {
@@ -2242,6 +2328,212 @@ SAFETY: Keep everything gentle and suitable for ${profile.schoolClass}. Never di
       else showToast('Buddy has not said anything yet.');
     }
 
+    const SPOKEN_LETTERS = Object.freeze({
+      a: 'a', ay: 'a', bee: 'b', b: 'b', sea: 'c', see: 'c', c: 'c', dee: 'd', d: 'd',
+      e: 'e', ee: 'e', ef: 'f', f: 'f', gee: 'g', g: 'g', aitch: 'h', h: 'h', eye: 'i', i: 'i',
+      jay: 'j', j: 'j', kay: 'k', k: 'k', el: 'l', l: 'l', em: 'm', m: 'm', en: 'n', n: 'n',
+      oh: 'o', o: 'o', pea: 'p', pee: 'p', p: 'p', cue: 'q', q: 'q', are: 'r', r: 'r', es: 's', s: 's',
+      tea: 't', tee: 't', t: 't', you: 'u', u: 'u', vee: 'v', v: 'v', w: 'w', ex: 'x', x: 'x',
+      why: 'y', y: 'y', zed: 'z', zee: 'z', z: 'z'
+    });
+    const SPELLING_FILLERS = new Set(['um', 'umm', 'uh', 'er', 'hmm', 'please']);
+
+    function normaliseSpellingWord(word) {
+      return String(word).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z]/g, '');
+    }
+
+    function spellingTokens(transcript) {
+      return String(transcript)
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z]+/g, ' ')
+        .trim()
+        .split(/\s+/)
+        .filter((token) => token && !SPELLING_FILLERS.has(token));
+    }
+
+    function parseSpokenLetters(transcript) {
+      const tokens = spellingTokens(transcript);
+      const letters = [];
+      for (let index = 0; index < tokens.length; index += 1) {
+        if (tokens[index] === 'double' && ['u', 'you'].includes(tokens[index + 1])) {
+          letters.push('w');
+          index += 1;
+          continue;
+        }
+        const letter = SPOKEN_LETTERS[tokens[index]];
+        if (letter) letters.push(letter);
+      }
+      return letters.join('');
+    }
+
+    function transcriptIsWholeWord(transcript, target) {
+      const tokens = spellingTokens(transcript);
+      return tokens.length === 1 && normaliseSpellingWord(tokens[0]) === normaliseSpellingWord(target) && normaliseSpellingWord(target).length > 1;
+    }
+
+    function spellingExample(target) {
+      return normaliseSpellingWord(target) === 'tree' ? 'F... I... S... H' : 'T... R... E... E';
+    }
+
+    function startSpellingTest() {
+      const words = availableSpellingWords();
+      if (!words.length) return;
+      stopActiveRecognition();
+      pauseBuddySession(true);
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      spellingSession = { words, index: 0, correct: 0, wrongWords: [], wholeWordRetryUsed: false, stopped: false };
+      $('#spellingTest').hidden = false;
+      document.body.style.overflow = 'hidden';
+      presentSpellingWord();
+    }
+
+    async function presentSpellingWord() {
+      const session = spellingSession;
+      if (!session || session.stopped) return;
+      const word = session.words[session.index];
+      session.wholeWordRetryUsed = false;
+      $('#spellingCounter').textContent = `${session.index + 1} of ${session.words.length}`;
+      $('#spellingProgressBar').style.width = `${session.index / session.words.length * 100}%`;
+      $('#spellingScore').textContent = `${session.correct} correct`;
+      $('#spellingFeedback').innerHTML = '';
+      $('#nextSpellingBtn').hidden = true;
+      $('#spellingMicBtn').hidden = false;
+      $('#spellingMicBtn').disabled = true;
+      $('#spellingMicCaption').textContent = 'Listen carefully…';
+      await speakText(`Spell the word: ${word}. ${word}.`);
+      if (spellingSession !== session || session.stopped) return;
+      listenForSpelling();
+    }
+
+    function setSpellingListening(listening) {
+      const button = $('#spellingMicBtn');
+      button.classList.toggle('listening', listening);
+      button.disabled = listening || !SpeechRecognition || location.protocol === 'file:';
+      if (listening) $('#spellingMicCaption').textContent = 'Listening…';
+    }
+
+    function listenForSpelling() {
+      const session = spellingSession;
+      if (!session || session.stopped || $('#nextSpellingBtn').hidden === false) return;
+      startSpeechFlow({
+        flowName: 'spelling',
+        promptElement: $('#spellingMicCaption'),
+        pulseElement: $('#spellingMicBtn'),
+        noticeElement: $('#spellingMicCaption'),
+        onPrepare: () => setSpellingListening(true),
+        onStart: () => setSpellingListening(true),
+        onInterim: () => {},
+        onFinal: handleSpellingTranscript,
+        onEnd: () => setSpellingListening(false),
+        onError: (code, friendly) => {
+          setSpellingListening(false);
+          setSpeechErrorMessage($('#spellingMicCaption'), `${friendly || 'Please try again.'} Tap the microphone to retry.`, code);
+        }
+      });
+    }
+
+    async function handleSpellingTranscript(transcript) {
+      const session = spellingSession;
+      if (!session || session.stopped) return;
+      const target = session.words[session.index];
+      if (transcriptIsWholeWord(transcript, target) && !session.wholeWordRetryUsed) {
+        session.wholeWordRetryUsed = true;
+        const correction = `Say the letters one by one, like ${spellingExample(target)}`;
+        $('#spellingMicCaption').textContent = correction;
+        await speakText(correction);
+        if (spellingSession === session && !session.stopped) listenForSpelling();
+        return;
+      }
+      revealSpellingResult(target, parseSpokenLetters(transcript));
+    }
+
+    function spellingLetterHTML(letter, className) {
+      return `<span class="spelling-letter ${className}">${escapeHTML(letter || '–')}</span>`;
+    }
+
+    function revealSpellingResult(word, answer) {
+      const session = spellingSession;
+      if (!session || session.stopped) return;
+      const target = normaliseSpellingWord(word);
+      const correct = answer === target;
+      if (correct) session.correct += 1;
+      else session.wrongWords.push(word);
+      const correctLetters = [...target].map((letter, index) => spellingLetterHTML(letter, answer[index] === letter ? 'good' : 'missed')).join('');
+      const answerLetters = [...answer].map((letter, index) => spellingLetterHTML(letter, target[index] === letter ? 'good' : 'missed')).join('') || spellingLetterHTML('–', 'missed');
+      $('#spellingMicBtn').hidden = true;
+      $('#spellingMicCaption').textContent = correct ? 'Brilliant spelling! 🌟' : 'Good try — look at the letters and remember them.';
+      $('#spellingFeedback').innerHTML = `<strong>${correct ? 'You got it!' : 'Correct spelling:'}</strong><div class="spelling-letters">${correctLetters}</div><small>You said</small><div class="spelling-letters">${answerLetters}</div>`;
+      $('#spellingScore').textContent = `${session.correct} correct`;
+      $('#spellingProgressBar').style.width = `${(session.index + 1) / session.words.length * 100}%`;
+      $('#nextSpellingBtn').textContent = session.index + 1 === session.words.length ? 'See my result ⭐' : 'Next word ➡️';
+      $('#nextSpellingBtn').hidden = false;
+      speakText(correct ? 'Brilliant spelling!' : `Good try. The correct spelling is ${[...target].join('. ')}.`);
+    }
+
+    function nextSpellingWord() {
+      const session = spellingSession;
+      if (!session || session.stopped) return;
+      if (session.finished) {
+        stopSpellingTest();
+        return;
+      }
+      if (session.index + 1 < session.words.length) {
+        session.index += 1;
+        presentSpellingWord();
+      } else {
+        finishSpellingTest();
+      }
+    }
+
+    function finishSpellingTest() {
+      const session = spellingSession;
+      if (!session || session.stopped) return;
+      stopActiveRecognition();
+      const result = {
+        at: new Date().toISOString(),
+        correct: session.correct,
+        total: session.words.length,
+        wrongWords: [...new Set(session.wrongWords)]
+      };
+      state.spellingResults.unshift(result);
+      state.spellingResults = state.spellingResults.slice(0, 50);
+      state.spellingWrongWords = result.wrongWords;
+      state.totalStars += result.correct;
+      if (result.correct) updateStreak();
+      saveState();
+      session.finished = true;
+      renderStars();
+      const fullMarks = result.correct === result.total;
+      const starRating = Math.round(result.correct / result.total * 3);
+      $('#spellingMicBtn').hidden = true;
+      $('#spellingMicCaption').textContent = '';
+      $('#spellingFeedback').innerHTML = `<div class="spelling-summary"><h3>${result.correct}/${result.total} correct</h3><div class="result-stars">${'⭐'.repeat(starRating)}${'☆'.repeat(3 - starRating)}</div><p>${fullMarks ? 'Full marks! Spelling Star badge earned! 🏅' : 'Lovely effort! Your tricky words will come first next time.'}</p></div>`;
+      $('#nextSpellingBtn').textContent = 'Done';
+      $('#nextSpellingBtn').hidden = false;
+    }
+
+    function stopSpellingTest() {
+      if (spellingSession) spellingSession.stopped = true;
+      spellingSession = null;
+      stopActiveRecognition();
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      $('#spellingTest').hidden = true;
+      document.body.style.overflow = '';
+      renderPractice();
+      renderBuddy();
+    }
+
+    function renderSpellingHistory() {
+      const panel = $('#spellingHistory');
+      if (!panel) return;
+      const results = state.spellingResults.slice(0, 12);
+      panel.innerHTML = results.length ? `<div class="spelling-history">${results.map((result) => `
+        <div class="spelling-history-row"><strong>${escapeHTML(formatDateTime(result.at))} • ${Number(result.correct)}/${Number(result.total)} correct</strong><br><span>${result.wrongWords?.length ? `Wrong words: ${escapeHTML(result.wrongWords.join(', '))}` : 'Full marks 🏅'}</span></div>`).join('')}</div>`
+        : '<div class="empty-state">No spelling tests yet. / अभी कोई स्पेलिंग टेस्ट नहीं हुआ।</div>';
+    }
+
     function renderStars() {
       $('#headerStarCount').textContent = String(state.totalStars);
       $('#totalStars').textContent = `${state.totalStars} ⭐`;
@@ -2289,6 +2581,7 @@ SAFETY: Keep everything gentle and suitable for ${profile.schoolClass}. Never di
       renderAssignments();
       renderActiveAssignment();
       renderParentDashboard();
+      renderSpellingHistory();
       renderTranscripts();
       renderErrorLog();
       renderMicDiagnostics();
@@ -2513,20 +2806,23 @@ SAFETY: Keep everything gentle and suitable for ${profile.schoolClass}. Never di
         return;
       }
       const savedAt = new Date().toISOString();
-      const pack = {
+      const pack = readAloud.length ? {
         id: `custom-${Date.now()}`,
         name: title.slice(0, 45),
         emoji: '🎒',
-        items: [...spellingWords, ...readAloud].map((item) => item.slice(0, 700)),
+        items: readAloud.map((item) => item.slice(0, 700)),
         createdAt: savedAt
-      };
+      } : null;
       if (state.activeAssignmentBrief?.status === 'active') {
         state.assignmentHistory.unshift({ ...state.activeAssignmentBrief, status: 'replaced' });
       }
-      state.customPacks.push(pack);
-      state.practice = { packId: pack.id, itemIndex: 0 };
+      if (pack) {
+        state.customPacks.push(pack);
+        state.practice = { packId: pack.id, itemIndex: 0 };
+      }
       state.activeAssignmentBrief = {
         title,
+        spelling_words: spellingWords.map((word) => word.slice(0, 100)),
         questions: collectAssignmentQuestions(),
         summary: $('#assignmentSummaryInput').value.trim().slice(0, 1500),
         parentNote: pendingAssignment.parentNote,
@@ -2543,6 +2839,7 @@ SAFETY: Keep everything gentle and suitable for ${profile.schoolClass}. Never di
       renderActiveAssignment();
       renderParentDashboard();
       renderStars();
+      renderPractice();
     }
 
     function markAssignmentDone() {
@@ -2574,7 +2871,7 @@ SAFETY: Keep everything gentle and suitable for ${profile.schoolClass}. Never di
       }
       list.innerHTML = state.customPacks.map((pack) => `
         <div class="assignment-row">
-          <div><strong>✏️ ${escapeHTML(pack.name)}</strong><small>${pack.items.length} items / अभ्यास</small></div>
+          <div><strong>${pack.kind === 'spelling' ? '🔤' : '✏️'} ${escapeHTML(pack.name)}</strong><small>${pack.items.length} ${pack.kind === 'spelling' ? 'spelling words / स्पेलिंग शब्द' : 'items / अभ्यास'}</small></div>
           <button class="btn btn-danger btn-small delete-pack" type="button" data-pack-id="${escapeHTML(pack.id)}">Delete / हटाएँ</button>
         </div>`).join('');
       $$('.delete-pack').forEach((button) => button.addEventListener('click', () => deleteCustomPack(button.dataset.packId)));
@@ -2583,6 +2880,7 @@ SAFETY: Keep everything gentle and suitable for ${profile.schoolClass}. Never di
     function addCustomPack() {
       const name = $('#packNameInput').value.trim();
       const items = $('#packItemsInput').value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean).slice(0, 100);
+      const kind = $('#packTypeInput').value === 'spelling' ? 'spelling' : 'custom';
       if (!name || !items.length) {
         setStatus($('#packStatus'), 'Add a name and at least one line. / नाम और कम से कम एक लाइन जोड़ें।', 'error');
         return;
@@ -2590,19 +2888,24 @@ SAFETY: Keep everything gentle and suitable for ${profile.schoolClass}. Never di
       const pack = {
         id: `custom-${Date.now()}`,
         name: name.slice(0, 45),
-        emoji: '✏️',
+        emoji: kind === 'spelling' ? '🔤' : '✏️',
+        kind,
         items: items.map((item) => item.slice(0, 700)),
         createdAt: new Date().toISOString()
       };
       state.customPacks.push(pack);
-      state.practice.packId = pack.id;
-      state.practice.itemIndex = 0;
+      if (kind !== 'spelling') {
+        state.practice.packId = pack.id;
+        state.practice.itemIndex = 0;
+      }
       saveState();
       $('#packNameInput').value = '';
       $('#packItemsInput').value = '';
+      $('#packTypeInput').value = 'practice';
       setStatus($('#packStatus'), 'Pack created! / पैक बन गया!', 'success');
       renderAssignments();
       renderParentDashboard();
+      renderPractice();
     }
 
     function deleteCustomPack(packId) {
@@ -2739,6 +3042,7 @@ SAFETY: Keep everything gentle and suitable for ${profile.schoolClass}. Never di
         flowName: 'mictest',
         target: 'test',
         promptElement: $('#micTestStatus'),
+        pulseElement: $('#micTestBtn'),
         noticeElement: $('#micTestStatus'),
         captureLog,
         onPrepare: () => { $('#micTestBtn').disabled = true; },
@@ -2895,6 +3199,10 @@ SAFETY: Keep everything gentle and suitable for ${profile.schoolClass}. Never di
       $('#yourTurnBtn').addEventListener('click', startPracticeListening);
       $('#tryAgainBtn').addEventListener('click', startPracticeListening);
       $('#nextBtn').addEventListener('click', nextPracticeItem);
+      $('#startSpellingBtn').addEventListener('click', startSpellingTest);
+      $('#stopSpellingBtn').addEventListener('click', stopSpellingTest);
+      $('#spellingMicBtn').addEventListener('click', listenForSpelling);
+      $('#nextSpellingBtn').addEventListener('click', nextSpellingWord);
 
       $('#buddyMicBtn').addEventListener('click', startBuddyListening);
       $('#buddyTimer').addEventListener('click', toggleBuddyTimer);
@@ -3006,6 +3314,10 @@ SAFETY: Keep everything gentle and suitable for ${profile.schoolClass}. Never di
         apiUrl: API_URL,
         packCounts: () => Object.fromEntries(allPacks().map((pack) => [pack.id, pack.items.length])),
         compare: (target, heard) => alignWords(target, heard),
+        rebuildCumulativeTranscript,
+        parseSpokenLetters,
+        transcriptIsWholeWord,
+        spellingState: () => ({ results: state.spellingResults, wrongWords: state.spellingWrongWords }),
         systemPromptWordCount: () => buildSystemPrompt().trim().split(/\s+/).length
       });
     }

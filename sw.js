@@ -1,4 +1,4 @@
-const CACHE_NAME = 'english-buddy-v3';
+const CACHE_NAME = 'english-buddy-v4';
 const APP_ASSETS = [
   './',
   './index.html',
