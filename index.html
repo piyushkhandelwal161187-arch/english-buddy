@@ -426,6 +426,10 @@
     .transcript-line.buddy { background: var(--green-soft); }
     .empty-state { padding: 18px; border-radius: 14px; background: #f6f4fa; color: var(--muted); font-weight: 700; text-align: center; }
     .error-log { max-height: 220px; overflow: auto; padding: 11px; border-radius: 13px; background: #2c2639; color: #f7d9df; font-family: Consolas, monospace; font-size: .72rem; white-space: pre-wrap; }
+    .mic-facts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; margin-bottom: 12px; }
+    .mic-fact { padding: 9px 10px; border-radius: 12px; background: #f5f3fa; font-size: .76rem; }
+    .mic-fact strong { display: block; margin-top: 2px; overflow-wrap: anywhere; }
+    .speech-error-code { display: block; margin-top: 4px; color: #8b8795; font-size: .7rem; font-weight: 600; }
 
     .bottom-nav {
       position: fixed;
@@ -708,6 +712,15 @@
               <summary>🔊 Buddy's voice / बडी की आवाज़</summary>
               <div class="settings-body">
                 <div class="field">
+                  <label for="recognitionLangSelect">Recognition language / पहचान की भाषा</label>
+                  <select id="recognitionLangSelect">
+                    <option value="en-IN">en-IN — Indian English (default)</option>
+                    <option value="en-GB">en-GB — British English</option>
+                    <option value="en-US">en-US — American English</option>
+                  </select>
+                  <p class="hint">Try en-GB or en-US if this phone repeatedly reports no speech. / बार-बार आवाज़ न मिलने पर en-GB या en-US आज़माएँ।</p>
+                </div>
+                <div class="field">
                   <label for="voiceSelect">English voice / अंग्रेज़ी आवाज़</label>
                   <select id="voiceSelect"><option value="">Automatic en-IN / अपने आप en-IN</option></select>
                 </div>
@@ -806,6 +819,21 @@
               </div>
             </details>
 
+            <details class="card settings-card wide">
+              <summary>🎙️ Mic diagnostics / माइक जाँच</summary>
+              <div class="settings-body">
+                <div class="mic-facts" id="micFacts"></div>
+                <div class="settings-actions">
+                  <button class="btn btn-primary btn-small" id="micTestBtn" type="button">MIC TEST — 5 seconds</button>
+                  <button class="btn btn-outline btn-small" id="copyMicLogBtn" type="button">Copy log / लॉग कॉपी करें</button>
+                </div>
+                <div class="status-line" id="micTestStatus" aria-live="polite"></div>
+                <div class="error-log" id="micTestOutput">Mic test has not run yet.</div>
+                <p class="hint">Rolling recognition log (last 100 lines) / पिछली 100 लॉग लाइनें</p>
+                <div class="error-log" id="micDiagnosticsLog">No microphone events yet.</div>
+              </div>
+            </details>
+
             <details class="card settings-card">
               <summary>🔑 Change PIN / पिन बदलें</summary>
               <div class="settings-body">
@@ -837,6 +865,7 @@
     'use strict';
 
     const STORAGE_KEY = 'keeshaEnglishBuddy:v1';
+    const MIC_LOG_KEY = 'keeshaEnglishBuddy:micDiagnostics:v1';
     const API_URL = 'https://api.anthropic.com/v1/messages';
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
@@ -948,6 +977,7 @@
           dailyMinutes: 20,
           voiceURI: '',
           ttsRate: 0.9,
+          recognitionLang: 'en-IN',
           pin: '1234'
         },
         customPacks: [],
@@ -985,6 +1015,7 @@
         merged.settings.childName = String(merged.settings.childName || 'Friend').trim().slice(0, 30) || 'Friend';
         merged.settings.childAge = Math.max(4, Math.min(14, Number(merged.settings.childAge) || 8));
         merged.settings.childClass = String(merged.settings.childClass || 'Class 2').trim().slice(0, 30) || 'Class 2';
+        if (!['en-IN', 'en-GB', 'en-US'].includes(merged.settings.recognitionLang)) merged.settings.recognitionLang = 'en-IN';
         return merged;
       } catch (error) {
         console.error('Could not read saved app state.', error);
@@ -1005,6 +1036,30 @@
     let toastHandle = null;
     let practiceLastTranscript = '';
     let pendingAssignment = null;
+    let microphonePermissionState = 'unavailable';
+    let microphonePermissionStatus = null;
+    let micTestLines = [];
+
+    function loadMicLog() {
+      try {
+        const stored = JSON.parse(localStorage.getItem(MIC_LOG_KEY) || '[]');
+        return Array.isArray(stored) ? stored.slice(-100).map(String) : [];
+      } catch (error) {
+        return [];
+      }
+    }
+
+    let micDiagnosticsLines = loadMicLog();
+
+    function logMic(eventName, detail = '', capture) {
+      const line = `[${new Date().toISOString()}] ${eventName}${detail ? ` | ${detail}` : ''}`;
+      micDiagnosticsLines.push(line);
+      micDiagnosticsLines = micDiagnosticsLines.slice(-100);
+      try { localStorage.setItem(MIC_LOG_KEY, JSON.stringify(micDiagnosticsLines)); } catch (error) { console.debug('Could not save microphone diagnostics.', error); }
+      capture?.(line);
+      if (parentsUnlocked) renderMicDiagnostics();
+      return line;
+    }
 
     function saveState() {
       try {
@@ -1245,97 +1300,291 @@
       });
     }
 
+    function setSpeechErrorMessage(element, message, errorCode) {
+      if (!element || errorCode === 'aborted') return;
+      element.replaceChildren(document.createTextNode(message));
+      const raw = document.createElement('small');
+      raw.className = 'speech-error-code';
+      raw.textContent = `Speech recognition code: ${errorCode}`;
+      element.appendChild(raw);
+    }
+
+    function friendlyRecognitionError(errorCode) {
+      if (errorCode === 'saved-file') return 'The microphone cannot work from a saved file. Open the secure app link in Chrome. / सेव फ़ाइल से माइक नहीं चलेगा। सुरक्षित ऐप लिंक Chrome में खोलें।';
+      if (errorCode === 'not-supported') return 'Speech recognition is not available here. Open the app link in Google Chrome. / यहाँ आवाज़ पहचान उपलब्ध नहीं है। ऐप लिंक Google Chrome में खोलें।';
+      if (errorCode === 'no-speech') return 'I did not hear any words. Move closer and try again! / मुझे कोई शब्द सुनाई नहीं दिया। पास आकर फिर कोशिश करें!';
+      if (errorCode === 'audio-capture') return 'The microphone is busy or not found. Close other apps using the mic and try again. / माइक व्यस्त है या मिला नहीं। माइक इस्तेमाल करने वाले दूसरे ऐप बंद करें।';
+      if (errorCode === 'not-allowed' || errorCode === 'service-not-allowed') return 'Microphone permission or the speech service is blocked. Ask a parent to set Settings > Apps > Chrome > Permissions > Microphone to ALLOW, and make sure the Google app speech service is enabled. / माइक अनुमति या स्पीच सेवा बंद है। माता-पिता Chrome की Microphone अनुमति ALLOW करें और Google app speech service चालू रखें।';
+      if (errorCode === 'network') return 'The speech service needs internet. Check the connection and try again. / आवाज़ पहचान के लिए इंटरनेट चाहिए। कनेक्शन जाँचकर फिर कोशिश करें।';
+      if (errorCode === 'aborted') return '';
+      if (errorCode === 'start-failed') return 'The microphone could not start. Wait a moment and try again. / माइक शुरू नहीं हुआ। थोड़ा रुककर फिर कोशिश करें।';
+      return `Speech recognition error: ${errorCode}. Please try again. / आवाज़ पहचान त्रुटि: ${errorCode}। फिर कोशिश करें।`;
+    }
+
+    function recognitionGuidance(errorCode, noticeElement) {
+      const friendly = friendlyRecognitionError(errorCode);
+      if (errorCode !== 'aborted' && noticeElement) {
+        noticeElement.classList.add('error');
+        setSpeechErrorMessage(noticeElement, friendly, errorCode);
+      }
+      return friendly;
+    }
+
+    const recognitionController = (() => {
+      let machineState = 'idle';
+      let sessionId = 0;
+      let recognition = null;
+      let callbacks = {};
+      let resultCandidates = [];
+      let resultEventSequence = 0;
+      let pendingError = '';
+      let errorDelivered = false;
+      let retryUsed = false;
+      let finishTimer = null;
+      let cancelled = false;
+
+      const emitLog = (eventName, detail = '') => logMic(eventName, detail, callbacks.captureLog);
+
+      function setState(nextState, reason) {
+        emitLog('state', `${machineState} -> ${nextState}${reason ? ` (${reason})` : ''}`);
+        machineState = nextState;
+      }
+
+      function bestTranscript() {
+        if (!resultCandidates.length) return '';
+        return [...resultCandidates]
+          .sort((first, second) =>
+            second.finalCount - first.finalCount ||
+            second.eventSequence - first.eventSequence ||
+            second.confidence - first.confidence ||
+            first.alternative - second.alternative ||
+            second.wordCount - first.wordCount
+          )[0].transcript;
+      }
+
+      function deliverError(errorCode) {
+        if (errorCode === 'aborted' || errorDelivered) return;
+        errorDelivered = true;
+        const friendly = recognitionGuidance(errorCode, callbacks.noticeElement);
+        callbacks.onError?.(errorCode, friendly);
+      }
+
+      function finishSession(id) {
+        if (id !== sessionId) return;
+        if (finishTimer) clearTimeout(finishTimer);
+        finishTimer = null;
+        recognition = null;
+        activeRecognition = null;
+        setState('idle', 'onend');
+        callbacks.onEnd?.();
+        if (cancelled) {
+          emitLog('decision', 'app cancellation: no transcript or message delivered');
+          return;
+        }
+        const transcript = bestTranscript();
+        if (transcript) {
+          emitLog('decision', `using best accumulated transcript: ${JSON.stringify(transcript)}`);
+          callbacks.onFinal?.(transcript);
+        } else if (pendingError === 'aborted') {
+          emitLog('decision', 'aborted error is silent');
+        } else {
+          const code = pendingError || 'no-speech';
+          emitLog('decision', `no accumulated transcript; delivering ${code}`);
+          deliverError(code);
+        }
+      }
+
+      function attachEvents(instance, id) {
+        const lifecycleEvents = ['audiostart', 'audioend', 'soundstart', 'soundend', 'speechstart', 'speechend'];
+        lifecycleEvents.forEach((eventName) => {
+          instance[`on${eventName}`] = () => emitLog(`on${eventName}`);
+        });
+        instance.onstart = () => {
+          if (id !== sessionId) return;
+          emitLog('onstart');
+          setState('listening', 'recognizer started');
+          callbacks.onStart?.();
+          if (callbacks.maxDurationMs) {
+            finishTimer = setTimeout(() => {
+              if (id !== sessionId || !recognition || machineState === 'idle') return;
+              emitLog('decision', `${callbacks.maxDurationMs}ms mic-test limit reached; calling stop()`);
+              setState('stopping', 'mic-test time limit');
+              try { recognition.stop(); } catch (error) { emitLog('stop threw', `${error.name}: ${error.message}`); }
+            }, callbacks.maxDurationMs);
+          }
+        };
+        instance.onresult = (event) => {
+          if (id !== sessionId) return;
+          const batch = [];
+          resultEventSequence += 1;
+          for (let index = 0; index < event.results.length; index += 1) {
+            const result = event.results[index];
+            for (let alternative = 0; alternative < result.length; alternative += 1) {
+              const item = result[alternative];
+              const transcript = String(item?.transcript || '').trim();
+              const confidence = Number.isFinite(Number(item?.confidence)) ? Number(item.confidence) : 0;
+              emitLog('onresult', `index=${index} alternative=${alternative} isFinal=${Boolean(result.isFinal)} confidence=${confidence.toFixed(3)} transcript=${JSON.stringify(transcript)}`);
+            }
+          }
+          for (let alternative = 0; alternative < 3; alternative += 1) {
+            const parts = [];
+            let confidenceTotal = 0;
+            let confidenceCount = 0;
+            let finalCount = 0;
+            for (let index = 0; index < event.results.length; index += 1) {
+              const result = event.results[index];
+              const item = result[alternative] || result[0];
+              const transcript = String(item?.transcript || '').trim();
+              if (transcript) parts.push(transcript);
+              if (Number(item?.confidence) > 0) {
+                confidenceTotal += Number(item.confidence);
+                confidenceCount += 1;
+              }
+              if (result.isFinal) finalCount += 1;
+            }
+            const transcript = parts.join(' ').replace(/\s+/g, ' ').trim();
+            if (!transcript || batch.some((item) => item.transcript === transcript)) continue;
+            const confidence = confidenceCount ? confidenceTotal / confidenceCount : 0;
+            const wordCount = transcript.split(/\s+/).length;
+            batch.push({
+              transcript,
+              confidence,
+              finalCount,
+              wordCount,
+              alternative,
+              eventSequence: resultEventSequence
+            });
+          }
+          resultCandidates.push(...batch);
+          const interim = bestTranscript();
+          emitLog('decision', `best transcript so far: ${JSON.stringify(interim)}`);
+          callbacks.onInterim?.(interim);
+        };
+        instance.onerror = (event) => {
+          if (id !== sessionId) return;
+          pendingError = event.error || 'unknown';
+          emitLog('onerror', `code=${pendingError} message=${JSON.stringify(event.message || '')}`);
+          if (!['no-speech', 'aborted'].includes(pendingError) && !bestTranscript()) deliverError(pendingError);
+          else emitLog('decision', `defer ${pendingError} until onend so accumulated results can be used`);
+        };
+        instance.onend = () => {
+          if (id !== sessionId) return;
+          emitLog('onend');
+          finishSession(id);
+        };
+      }
+
+      function createAndStart(id) {
+        if (id !== sessionId || machineState !== 'starting') {
+          emitLog('decision', 'start skipped because session is stale or state is not starting');
+          return;
+        }
+        recognition = new SpeechRecognition();
+        activeRecognition = recognition;
+        recognition.lang = state.settings.recognitionLang;
+        recognition.continuous = false;
+        recognition.interimResults = true;
+        recognition.maxAlternatives = 3;
+        attachEvents(recognition, id);
+        emitLog('start called', `lang=${recognition.lang} continuous=false interimResults=true maxAlternatives=3`);
+        try {
+          recognition.start();
+        } catch (error) {
+          emitLog('start threw', `${error.name}: ${error.message}`);
+          if (error.name === 'InvalidStateError' && !retryUsed) {
+            retryUsed = true;
+            setState('stopping', 'InvalidStateError; stop before one retry');
+            recognition.onend = () => emitLog('onend', 'ignored while preparing InvalidStateError retry');
+            recognition.onerror = (retryError) => emitLog('onerror', `ignored while preparing retry: ${retryError.error || 'unknown'}`);
+            try { recognition.stop(); } catch (stopError) { emitLog('retry stop threw', `${stopError.name}: ${stopError.message}`); }
+            recognition = null;
+            activeRecognition = null;
+            setTimeout(() => {
+              if (id !== sessionId) return;
+              setState('starting', 'single retry after 300ms');
+              emitLog('decision', 'retrying start once after InvalidStateError');
+              createAndStart(id);
+            }, 300);
+            return;
+          }
+          addError('speech-recognition-start', error);
+          pendingError = 'start-failed';
+          recognition = null;
+          activeRecognition = null;
+          setState('idle', 'start failed');
+          deliverError('start-failed');
+          callbacks.onEnd?.();
+        }
+      }
+
+      async function start(options) {
+        if (machineState !== 'idle') {
+          logMic('decision', `start request ignored because state=${machineState}`, options.captureLog);
+          return false;
+        }
+        callbacks = options;
+        resultCandidates = [];
+        resultEventSequence = 0;
+        pendingError = '';
+        errorDelivered = false;
+        retryUsed = false;
+        cancelled = false;
+        sessionId += 1;
+        const id = sessionId;
+        setState('starting', 'new request');
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          emitLog('decision', 'speechSynthesis.cancel() called; waiting 250ms');
+        } else {
+          emitLog('decision', 'speechSynthesis unavailable; waiting 250ms');
+        }
+        await delay(250);
+        createAndStart(id);
+        return true;
+      }
+
+      function cancel(reason = 'app requested stop') {
+        if (machineState === 'idle') return;
+        cancelled = true;
+        sessionId += 1;
+        if (finishTimer) clearTimeout(finishTimer);
+        finishTimer = null;
+        setState('stopping', reason);
+        if (recognition) {
+          try {
+            emitLog('decision', 'calling abort() for app cancellation');
+            recognition.abort();
+          } catch (error) {
+            emitLog('abort threw', `${error.name}: ${error.message}`);
+          }
+        }
+        recognition = null;
+        activeRecognition = null;
+        setState('idle', 'cancellation complete');
+        callbacks.onEnd?.();
+      }
+
+      return { start, cancel, getState: () => machineState };
+    })();
+
     function stopActiveRecognition() {
-      if (!activeRecognition) return;
-      try { activeRecognition.abort(); } catch (error) { console.debug('Recognition was already stopped.', error); }
-      activeRecognition = null;
+      recognitionController.cancel();
       setPracticeControls(false);
       setBuddyListening(false);
     }
 
-    function recognitionGuidance(errorCode, noticeElement) {
+    function listenForSpeech(options) {
       if (location.protocol === 'file:') {
-        const message = '🎙️ The microphone cannot work from a saved file on phones. Please open the app from its internet link (ask Papa for the link). / फ़ोन पर सेव की हुई फ़ाइल से माइक्रोफ़ोन काम नहीं कर सकता। ऐप को उसके इंटरनेट लिंक से खोलें (लिंक के लिए पापा से पूछें)।';
-        noticeElement.className = 'notice error';
-        noticeElement.textContent = message;
-        return 'The microphone cannot work from a saved file on phones. Please open the app from its internet link (ask Papa for the link).';
-      }
-      const permissionErrors = ['not-allowed', 'service-not-allowed', 'audio-capture'];
-      if (permissionErrors.includes(errorCode)) {
-        noticeElement.className = 'notice error';
-        noticeElement.textContent = location.protocol === 'https:'
-          ? '🎙️ Please use Chrome and allow Microphone permission. / कृपया Chrome में माइक्रोफ़ोन की अनुमति दें।'
-          : '🎙️ Please open the app from its secure internet link in Chrome. / ऐप को Chrome में उसके सुरक्षित इंटरनेट लिंक से खोलें।';
-        return location.protocol === 'https:'
-          ? 'I cannot use the microphone yet. Ask Mummy to allow it in Chrome.'
-          : 'Please open the app from its secure internet link in Chrome.';
-      }
-      if (errorCode === 'network') {
-        noticeElement.className = 'notice error';
-        noticeElement.textContent = '🌐 Voice checking needs internet. Connect to the internet and try again. / आवाज़ जाँचने के लिए इंटरनेट चाहिए।';
-        return 'Voice checking is offline right now. Connect to the internet and try again.';
-      }
-      if (errorCode === 'no-speech') return 'I did not hear any words. Move closer and try again!';
-      return 'I could not hear that clearly. Please try once more!';
-    }
-
-    function listenForSpeech({ onInterim, onFinal, onStart, onEnd, onError, noticeElement }) {
-      if (location.protocol === 'file:') {
-        onError?.('saved-file', recognitionGuidance('saved-file', noticeElement));
+        const friendly = recognitionGuidance('saved-file', options.noticeElement);
+        options.onError?.('saved-file', friendly);
         return;
       }
       if (!SpeechRecognition) {
-        noticeElement.className = 'notice error';
-        noticeElement.textContent = '🎙️ Speech checking is not available in this browser. Please open the app link in Google Chrome. / यह सुविधा इस ब्राउज़र में उपलब्ध नहीं है। ऐप का लिंक Google Chrome में खोलें।';
-        onError?.('not-supported');
+        const friendly = recognitionGuidance('not-supported', options.noticeElement);
+        options.onError?.('not-supported', friendly);
         return;
       }
-
-      stopActiveRecognition();
-      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
-      const recognition = new SpeechRecognition();
-      activeRecognition = recognition;
-      recognition.lang = 'en-IN';
-      recognition.interimResults = true;
-      recognition.continuous = false;
-      recognition.maxAlternatives = 1;
-      let latestTranscript = '';
-      let hadError = false;
-
-      recognition.onstart = () => onStart?.();
-      recognition.onresult = (event) => {
-        let transcript = '';
-        let finalTranscript = '';
-        for (let index = 0; index < event.results.length; index += 1) {
-          const words = event.results[index][0]?.transcript || '';
-          transcript += `${words} `;
-          if (event.results[index].isFinal) finalTranscript += `${words} `;
-        }
-        latestTranscript = transcript.trim();
-        onInterim?.(latestTranscript);
-        if (finalTranscript.trim()) latestTranscript = finalTranscript.trim();
-      };
-      recognition.onerror = (event) => {
-        hadError = true;
-        const friendly = recognitionGuidance(event.error, noticeElement);
-        onError?.(event.error, friendly);
-      };
-      recognition.onend = () => {
-        activeRecognition = null;
-        onEnd?.();
-        if (!hadError) {
-          if (latestTranscript) onFinal?.(latestTranscript);
-          else onError?.('no-speech', recognitionGuidance('no-speech', noticeElement));
-        }
-      };
-
-      try {
-        recognition.start();
-      } catch (error) {
-        activeRecognition = null;
-        addError('speech-recognition-start', error);
-        onError?.('start-failed', 'The microphone is busy. Wait a moment and try again.');
-      }
+      recognitionController.start(options);
     }
 
     function normaliseWords(text) {
@@ -1519,7 +1768,7 @@
         onEnd: () => setPracticeControls(false),
         onError: (code, friendly) => {
           setPracticeControls(false);
-          $('#practiceHeard').textContent = friendly || 'Please try again.';
+          setSpeechErrorMessage($('#practiceHeard'), friendly || 'Please try again.', code);
         }
       });
     }
@@ -1814,7 +2063,7 @@ SAFETY: Keep everything gentle and suitable for ${profile.schoolClass}. Never di
           }
           setBuddyListening(false);
           updateBuddyTimer();
-          $('#buddyMicCaption').textContent = friendly || 'Please try again.';
+          setSpeechErrorMessage($('#buddyMicCaption'), friendly || 'Please try again.', code);
         }
       });
     }
@@ -1911,6 +2160,7 @@ SAFETY: Keep everything gentle and suitable for ${profile.schoolClass}. Never di
       $('#todayUsedValue').textContent = `${(Number(state.daily.buddySeconds || 0) / 60).toFixed(1)} min`;
       $('#voiceRateInput').value = String(state.settings.ttsRate);
       $('#voiceRateValue').textContent = `${Number(state.settings.ttsRate).toFixed(1)}×`;
+      $('#recognitionLangSelect').value = state.settings.recognitionLang;
       renderVoicePicker();
       renderTopics();
       renderAssignments();
@@ -1918,6 +2168,8 @@ SAFETY: Keep everything gentle and suitable for ${profile.schoolClass}. Never di
       renderParentDashboard();
       renderTranscripts();
       renderErrorLog();
+      renderMicDiagnostics();
+      refreshMicrophonePermission();
     }
 
     function renderVoicePicker() {
@@ -2298,6 +2550,103 @@ SAFETY: Keep everything gentle and suitable for ${profile.schoolClass}. Never di
       log.textContent = state.errors.map((entry) => `[${formatDateTime(entry.at)}] ${entry.context}\n${entry.message}`).join('\n\n');
     }
 
+    function renderMicDiagnostics() {
+      const facts = $('#micFacts');
+      const log = $('#micDiagnosticsLog');
+      if (!facts || !log) return;
+      const factRows = [
+        ['Online', navigator.onLine ? 'yes' : 'no'],
+        ['Microphone permission', microphonePermissionState],
+        ['webkitSpeechRecognition', window.webkitSpeechRecognition ? 'available' : 'not available'],
+        ['Recognition language', state.settings.recognitionLang],
+        ['Recognizer state', recognitionController.getState()]
+      ];
+      facts.innerHTML = factRows.map(([label, value]) => `<div class="mic-fact">${escapeHTML(label)}<strong>${escapeHTML(value)}</strong></div>`).join('');
+      log.textContent = micDiagnosticsLines.length ? micDiagnosticsLines.join('\n') : 'No microphone events yet.';
+      log.scrollTop = log.scrollHeight;
+    }
+
+    async function refreshMicrophonePermission() {
+      if (!navigator.permissions?.query) {
+        microphonePermissionState = 'Permissions API unavailable';
+        renderMicDiagnostics();
+        return;
+      }
+      if (microphonePermissionStatus) {
+        microphonePermissionState = microphonePermissionStatus.state;
+        renderMicDiagnostics();
+        return;
+      }
+      try {
+        const status = await navigator.permissions.query({ name: 'microphone' });
+        microphonePermissionState = status.state;
+        microphonePermissionStatus = status;
+        status.addEventListener?.('change', () => {
+          microphonePermissionState = status.state;
+          logMic('permission change', `microphone=${status.state}`);
+          renderMicDiagnostics();
+        });
+      } catch (error) {
+        microphonePermissionState = `query unavailable (${error.name || 'error'})`;
+      }
+      renderMicDiagnostics();
+    }
+
+    function renderMicTestOutput() {
+      const output = $('#micTestOutput');
+      if (!output) return;
+      output.textContent = micTestLines.length ? micTestLines.join('\n') : 'Mic test has not run yet.';
+      output.scrollTop = output.scrollHeight;
+    }
+
+    function startMicTest() {
+      if (recognitionController.getState() !== 'idle') {
+        setStatus($('#micTestStatus'), `Recognizer is ${recognitionController.getState()}. Wait for the current attempt to finish.`, 'error');
+        return;
+      }
+      micTestLines = [];
+      renderMicTestOutput();
+      $('#micTestBtn').disabled = true;
+      setStatus($('#micTestStatus'), 'Testing for up to 5 seconds — say a few words now… / 5 सेकंड तक बोलें…');
+      const captureLog = (line) => {
+        micTestLines.push(line);
+        renderMicTestOutput();
+      };
+      listenForSpeech({
+        noticeElement: $('#micTestStatus'),
+        captureLog,
+        maxDurationMs: 5000,
+        onStart: () => setStatus($('#micTestStatus'), 'Listening now… / अब बोलें…'),
+        onInterim: () => {},
+        onFinal: (transcript) => setStatus($('#micTestStatus'), `MIC TEST heard: “${transcript}”`, 'success'),
+        onEnd: () => { $('#micTestBtn').disabled = false; },
+        onError: (code, friendly) => {
+          $('#micTestBtn').disabled = false;
+          setSpeechErrorMessage($('#micTestStatus'), friendly, code);
+        }
+      });
+    }
+
+    async function copyMicLog() {
+      const facts = `Online: ${navigator.onLine}\nMicrophone permission: ${microphonePermissionState}\nwebkitSpeechRecognition: ${Boolean(window.webkitSpeechRecognition)}\nRecognition language: ${state.settings.recognitionLang}\nRecognizer state: ${recognitionController.getState()}`;
+      const text = `${facts}\n\n${micDiagnosticsLines.join('\n') || 'No microphone events yet.'}`;
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          const textarea = document.createElement('textarea');
+          textarea.value = text;
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand('copy');
+          textarea.remove();
+        }
+        setStatus($('#micTestStatus'), 'Log copied. / लॉग कॉपी हो गया।', 'success');
+      } catch (error) {
+        setStatus($('#micTestStatus'), 'Could not copy automatically. Select the log text and copy it. / लॉग टेक्स्ट चुनकर कॉपी करें।', 'error');
+      }
+    }
+
     function saveApiSettings() {
       state.settings.apiKey = $('#apiKeyInput').value.trim();
       state.settings.model = $('#modelSelect').value;
@@ -2372,6 +2721,13 @@ SAFETY: Keep everything gentle and suitable for ${profile.schoolClass}. Never di
       saveState();
     }
 
+    function updateRecognitionSettings() {
+      state.settings.recognitionLang = $('#recognitionLangSelect').value;
+      saveState();
+      logMic('setting changed', `recognition language=${state.settings.recognitionLang}`);
+      renderMicDiagnostics();
+    }
+
     function changeParentPin() {
       const newPin = $('#newPinInput').value.trim();
       if (!/^\d{4,8}$/.test(newPin)) {
@@ -2437,7 +2793,10 @@ SAFETY: Keep everything gentle and suitable for ${profile.schoolClass}. Never di
       $('#resetDayBtn').addEventListener('click', resetTodayLock);
       $('#voiceSelect').addEventListener('change', updateVoiceSettings);
       $('#voiceRateInput').addEventListener('input', updateVoiceSettings);
+      $('#recognitionLangSelect').addEventListener('change', updateRecognitionSettings);
       $('#testVoiceBtn').addEventListener('click', () => speakText(`Hello ${childProfile().name}! Your bright voice makes every word sparkle.`));
+      $('#micTestBtn').addEventListener('click', startMicTest);
+      $('#copyMicLogBtn').addEventListener('click', copyMicLog);
       $('#uploadAssignmentBtn').addEventListener('click', () => {
         if (!state.settings.apiKey) {
           setStatus($('#assignmentStatus'), 'First add and save the API key in Buddy API above. / पहले ऊपर Buddy API में API key डालकर सेव करें।', 'error');
@@ -2463,6 +2822,14 @@ SAFETY: Keep everything gentle and suitable for ${profile.schoolClass}. Never di
       });
       document.addEventListener('visibilitychange', () => {
         if (document.hidden) pauseBuddySession(true);
+      });
+      window.addEventListener('online', () => {
+        logMic('network change', 'online=true');
+        renderMicDiagnostics();
+      });
+      window.addEventListener('offline', () => {
+        logMic('network change', 'online=false');
+        renderMicDiagnostics();
       });
     }
 
@@ -2499,6 +2866,7 @@ SAFETY: Keep everything gentle and suitable for ${profile.schoolClass}. Never di
       attachEvents();
       detectSpeechFeatures();
       loadVoices();
+      refreshMicrophonePermission();
       if ('speechSynthesis' in window) window.speechSynthesis.onvoiceschanged = loadVoices;
       renderChildIdentity();
       renderPractice();
