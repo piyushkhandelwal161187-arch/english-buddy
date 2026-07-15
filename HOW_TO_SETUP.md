@@ -1,3 +1,12 @@
+# App link / ऐप लिंक
+
+**https://piyushkhandelwal161187-arch.github.io/english-buddy/**
+
+Open this link in Chrome on the phone, then: Chrome menu (⋮) → **Install app** / **Add to Home screen**.
+इस लिंक को फोन के Chrome में खोलें, फिर Chrome मेनू (⋮) → **Install app** दबाएँ।
+
+---
+
 # English Buddy — आसान सेटअप
 
 The app opens from a secure internet link and can be installed on the phone's home screen. Practice lessons work without an API key. “Talk to Buddy” needs an Anthropic API key and internet.
