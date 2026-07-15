@@ -32,7 +32,7 @@ Practice (listen/repeat/score drills, packs incl. custom + assignment-generated)
 ## Version history (SW cache = deploy marker)
 
 - v1: initial hosted PWA. v2: CSP fix (SW registration). v3: state machine, diagnostics, auto-retry, countdown (regression), continuous mode (dup bug). 
-- **v4 (IN FLIGHT as of 15-Jul-2026 ~midnight): Codex task running** — fixes duplication (cumulative rebuild), removes countdown, adds **Spelling Test mode** (client-driven anti-cheat: app TTS speaks word, never displays it, child spells letter-by-letter, letter-homophone parsing bee→b etc., reveal+per-letter scoring after attempt, results in Parents, wrong words re-queued; entry: Practice card + Buddy chip when assignment/spelling pack exists). **NEXT SESSION: if not deployed, check the Codex result, verify (node --check done by Codex; check sw.js says v4), commit+push, verify live, tell user the close-reopen-twice routine.**
+- **v4 DEPLOYED + verified live 16-Jul-2026:** fixed duplication (cumulative rebuild), removes countdown, adds **Spelling Test mode** (client-driven anti-cheat: app TTS speaks word, never displays it, child spells letter-by-letter, letter-homophone parsing bee→b etc., reveal+per-letter scoring after attempt, results in Parents, wrong words re-queued; entry: Practice card + Buddy chip when assignment/spelling pack exists). Awaiting user field-test feedback on v4 (esp. spelling-test letter recognition on the real phone).
 
 ## Pending / ideas
 
