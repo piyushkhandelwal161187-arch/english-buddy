@@ -37,6 +37,8 @@ Practice (listen/repeat/score drills, packs incl. custom + assignment-generated)
 
 ## Pending / ideas
 
+- **v6 IN FLIGHT (Codex task, 16-Jul):** single-word items prompt 'say it two times' (service drops lone short words); phonetic near-match scoring (lev ratio>=0.67/consonant-skeleton; field confusions packed->ipad, washed->watched => yellow 'so close' retry, 2nd near = 2 stars). WHEN DONE: verify sw.js says v6, commit+push, `curl sw.js | grep v6`, tell user close-reopen-twice.
+
 - User tests v4 on real phone → iterate on feedback (esp. spelling test recognition of letters).
 - Sister deliverable (done): puppet-show kit in `C:\Temp\2026-07-13_keesha_puppet_show\`.
 - MEMORY.md §1 (blitz_report project memory) has a pointer entry to this file — keep it in sync.
