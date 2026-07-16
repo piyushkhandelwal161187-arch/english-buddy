@@ -26,13 +26,14 @@ Practice (listen/repeat/score drills, packs incl. custom + assignment-generated)
 - `file://` on Android Chrome NEVER gets mic (that's why it's hosted). webkitSpeechRecognition lang from settings; needs internet.
 - State machine wrapper (idle/starting/listening/stopping), shared by Practice/Buddy/MicTest. speechSynthesis.cancel() + ~250-500ms gap before start(). No double-start.
 - Google's service often returns ZERO results for short single words (field-verified) → fixes: continuous=true + interimResults, manual stop after 1.8s silence / 12s cap, **auto-retry once on empty**, tolerant scoring.
+- **🚨 ANDROID CONTINUOUS RESULTS ARE CUMULATIVE SNAPSHOTS** (each event.results[i] holds the WHOLE utterance-so-far; desktop delivers segments). v4's per-event rebuild still joined snapshots -> duplication ('please please may please may I...'). v5 fix: chain-aware joiner (prefix-extension chain -> take last/longest; else overlap-dedup join) used at EVERY transcript assembly/display point. Practice/Spelling also do INSTANT target matching on every interim across all alternatives (target known -> success mid-speech) + 2 silent retries on single words.
 - **v3 field bug:** accumulator concatenated per-event transcripts → massive duplication ("help help help me.... "). Fix (v4): rebuild transcript from cumulative `event.results[0..length-1]` each event, never append. 3-2-1 countdown (v3) was hated → removed in v4.
 - User's phone: en-GB recognizes better than en-IN but needs close range; longer window should help.
 
 ## Version history (SW cache = deploy marker)
 
 - v1: initial hosted PWA. v2: CSP fix (SW registration). v3: state machine, diagnostics, auto-retry, countdown (regression), continuous mode (dup bug). 
-- **v4 DEPLOYED + verified live 16-Jul-2026:** fixed duplication (cumulative rebuild), removes countdown, adds **Spelling Test mode** (client-driven anti-cheat: app TTS speaks word, never displays it, child spells letter-by-letter, letter-homophone parsing bee→b etc., reveal+per-letter scoring after attempt, results in Parents, wrong words re-queued; entry: Practice card + Buddy chip when assignment/spelling pack exists). Awaiting user field-test feedback on v4 (esp. spelling-test letter recognition on the real phone).
+- **v4 DEPLOYED + verified live 16-Jul-2026:** fixed duplication (cumulative rebuild), removes countdown, adds **Spelling Test mode** (client-driven anti-cheat: app TTS speaks word, never displays it, child spells letter-by-letter, letter-homophone parsing bee→b etc., reveal+per-letter scoring after attempt, results in Parents, wrong words re-queued; entry: Practice card + Buddy chip when assignment/spelling pack exists). v5 DEPLOYED 16-Jul-2026: chain-aware transcript joiner (Android cumulative snapshots) + instant target matching + 2 silent retries. Awaiting field test.
 
 ## Pending / ideas
 

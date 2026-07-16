@@ -1430,18 +1430,83 @@
       return friendly;
     }
 
-    function rebuildCumulativeTranscript(results) {
-      const finalParts = [];
-      let latestInterim = '';
-      for (let index = 0; index < results.length; index += 1) {
-        const result = results[index];
-        const transcript = String(result?.[0]?.transcript || '').trim();
-        if (!transcript) continue;
-        if (result.isFinal) finalParts.push(transcript);
-        else latestInterim = transcript;
+    function transcriptTokens(transcript) {
+      return normaliseWords(transcript);
+    }
+
+    function isTranscriptExtension(previous, current) {
+      const previousTokens = transcriptTokens(previous);
+      const currentTokens = transcriptTokens(current);
+      if (!previousTokens.length || currentTokens.length < previousTokens.length) return false;
+      const prefixMismatches = previousTokens.reduce((count, token, index) => count + Number(token !== currentTokens[index]), 0);
+      return prefixMismatches === 0 || previousTokens.length > 2 && prefixMismatches === 1;
+    }
+
+    function joinTranscriptParts(parts) {
+      const cleanParts = Array.from(parts || [], (part) => String(part || '').replace(/\s+/g, ' ').trim()).filter(Boolean);
+      if (!cleanParts.length) return '';
+      const formsExtensionChain = cleanParts.slice(1).every((part, index) => isTranscriptExtension(cleanParts[index], part));
+      if (formsExtensionChain) {
+        return cleanParts.reduce((longest, part) =>
+          transcriptTokens(part).length >= transcriptTokens(longest).length ? part : longest
+        );
       }
-      if (latestInterim) finalParts.push(latestInterim);
-      return finalParts.join(' ').replace(/\s+/g, ' ').trim();
+      const joinedTokens = cleanParts[0].split(/\s+/);
+      const joinedComparison = transcriptTokens(cleanParts[0]);
+      for (const part of cleanParts.slice(1)) {
+        const partTokens = part.split(/\s+/);
+        const partComparison = transcriptTokens(part);
+        let overlap = Math.min(joinedComparison.length, partComparison.length);
+        while (overlap > 0 && joinedComparison.slice(-overlap).join('\u0000') !== partComparison.slice(0, overlap).join('\u0000')) overlap -= 1;
+        joinedTokens.push(...partTokens.slice(overlap));
+        joinedComparison.push(...partComparison.slice(overlap));
+      }
+      return joinedTokens.join(' ').replace(/\s+/g, ' ').trim();
+    }
+
+    function rebuildCumulativeTranscript(results) {
+      return joinTranscriptParts(Array.from(results || [], (result) => result?.[0]?.transcript));
+    }
+
+    function containsTokenSequence(transcript, target) {
+      const transcriptWords = transcriptTokens(transcript);
+      const targetWords = transcriptTokens(target);
+      if (!targetWords.length || transcriptWords.length < targetWords.length) return false;
+      return transcriptWords.some((word, index) =>
+        word === targetWords[0] && targetWords.every((targetWord, offset) => transcriptWords[index + offset] === targetWord)
+      );
+    }
+
+    function sequencePrefixProgress(sequence, target) {
+      const maximum = Math.min(sequence.length, Math.max(0, target.length - 1));
+      for (let length = maximum; length > 0; length -= 1) {
+        if (sequence.slice(-length).every((item, index) => item === target[index])) return length;
+      }
+      return 0;
+    }
+
+    function tokenSequenceProgress(transcript, target) {
+      return sequencePrefixProgress(transcriptTokens(transcript), transcriptTokens(target));
+    }
+
+    function findMatchingTranscript(results, matcher, candidateKey) {
+      if (typeof matcher !== 'function') return '';
+      let candidates = [''];
+      for (const result of Array.from(results || [])) {
+        const alternatives = Array.from(result || [], (item) => String(item?.transcript || '').trim()).filter(Boolean);
+        if (!alternatives.length) continue;
+        const nextCandidates = new Map();
+        for (const candidate of candidates) {
+          for (const alternative of alternatives) {
+            if (matcher(alternative)) return alternative;
+            const joined = joinTranscriptParts([candidate, alternative]);
+            if (matcher(joined)) return joined;
+            nextCandidates.set(candidateKey ? candidateKey(joined) : transcriptTokens(joined).join(' '), joined);
+          }
+        }
+        candidates = [...nextCandidates.values()];
+      }
+      return '';
     }
 
     const recognitionController = (() => {
@@ -1506,17 +1571,21 @@
         emitLog('decision', `silence stop scheduled for 1800ms after ${source}`);
       }
 
+      function maxAutoRetries() {
+        return callbacks.target && transcriptTokens(callbacks.target).length === 1 ? 2 : 1;
+      }
+
       function startAutoRetry(id) {
-        autoRetryNumber = 1;
+        autoRetryNumber += 1;
         pendingError = '';
         errorDelivered = false;
         resultCandidates = [];
         resultEventSequence = 0;
         recognition = null;
         activeRecognition = null;
-        setState('retry-wait', 'no transcript from first attempt');
-        emitLog('auto-retry', 'no accumulated transcript; retry=1 scheduled after 300ms');
-        callbacks.onRetry?.('One more time — speak now! / एक बार फिर बोलो!');
+        setState('retry-wait', `no transcript from attempt ${autoRetryNumber}`);
+        emitLog('auto-retry', `no accumulated transcript; retry=${autoRetryNumber} scheduled after 300ms`);
+        callbacks.onRetry?.('Once more! Speak now! / एक बार फिर बोलो!');
         setTimeout(() => {
           if (id !== sessionId || cancelled || machineState !== 'retry-wait') return;
           setState('starting', 'automatic no-speech retry');
@@ -1545,13 +1614,13 @@
           setState('idle', 'aborted onend');
           callbacks.onEnd?.();
           emitLog('decision', 'aborted error is silent');
-        } else if ((!pendingError || pendingError === 'no-speech') && autoRetryNumber === 0) {
+        } else if ((!pendingError || pendingError === 'no-speech') && autoRetryNumber < maxAutoRetries()) {
           startAutoRetry(id);
         } else {
           const code = pendingError || 'no-speech';
           setState('idle', 'onend without transcript');
           callbacks.onEnd?.();
-          if (code === 'no-speech') emitLog('auto-retry', 'retry=1 also had no transcript; surfacing no-speech');
+          if (code === 'no-speech') emitLog('auto-retry', `retry=${autoRetryNumber} also had no transcript; surfacing no-speech`);
           emitLog('decision', `no accumulated transcript; delivering ${code}`);
           deliverError(code);
         }
@@ -1603,6 +1672,12 @@
           const interim = bestTranscript();
           emitLog('decision', `best transcript so far: ${JSON.stringify(interim)}`);
           callbacks.onInterim?.(interim);
+          const instantTranscript = findMatchingTranscript(event.results, callbacks.instantMatch, callbacks.instantCandidateKey);
+          if (instantTranscript) {
+            emitLog('decision', `instant target match: ${JSON.stringify(instantTranscript)}`);
+            callbacks.onInstantMatch?.(instantTranscript);
+            cancel('instant target match');
+          }
         };
         instance.onerror = (event) => {
           if (!isCurrentAttempt()) return;
@@ -1923,10 +1998,10 @@
       }
     }
 
-    function evaluatePractice(transcript) {
+    function evaluatePractice(transcript, forceSuccess = false) {
       const pack = getPack();
       const target = pack.items[state.practice.itemIndex];
-      const result = alignWords(target, transcript);
+      const result = forceSuccess ? alignWords(target, target) : alignWords(target, transcript);
       const stars = starsForScore(result.score);
       const newStars = awardPracticeResult(stars, result.score);
       practiceLastTranscript = transcript;
@@ -1963,7 +2038,10 @@
         noticeElement: $('#speechNotice'),
         onPrepare: () => setPracticeControls(true),
         onStart: () => setPracticeControls(true),
-        onInterim: (transcript) => { $('#practiceHeard').textContent = transcript || 'Listening…'; },
+        onInterim: (transcript) => { $('#practiceHeard').textContent = transcript ? `I heard: “${transcript}”` : 'Listening…'; },
+        instantMatch: (transcript) => containsTokenSequence(transcript, getPack().items[state.practice.itemIndex]),
+        instantCandidateKey: (transcript) => tokenSequenceProgress(transcript, getPack().items[state.practice.itemIndex]),
+        onInstantMatch: (transcript) => evaluatePractice(transcript, true),
         onFinal: evaluatePractice,
         onEnd: () => setPracticeControls(false),
         onError: (code, friendly) => {
@@ -2419,12 +2497,22 @@ SAFETY: Keep everything gentle and suitable for ${profile.schoolClass}. Never di
       if (!session || session.stopped || $('#nextSpellingBtn').hidden === false) return;
       startSpeechFlow({
         flowName: 'spelling',
+        target: session.words[session.index],
         promptElement: $('#spellingMicCaption'),
         pulseElement: $('#spellingMicBtn'),
         noticeElement: $('#spellingMicCaption'),
         onPrepare: () => setSpellingListening(true),
         onStart: () => setSpellingListening(true),
-        onInterim: () => {},
+        onInterim: (transcript) => { $('#spellingMicCaption').textContent = transcript ? `I heard: “${transcript}”` : 'Listening…'; },
+        instantMatch: (transcript) => parseSpokenLetters(transcript).includes(normaliseSpellingWord(session.words[session.index])),
+        instantCandidateKey: (transcript) => sequencePrefixProgress(
+          [...parseSpokenLetters(transcript)],
+          [...normaliseSpellingWord(session.words[session.index])]
+        ),
+        onInstantMatch: (transcript) => {
+          $('#spellingMicCaption').textContent = `I heard: “${transcript}”`;
+          revealSpellingResult(session.words[session.index], normaliseSpellingWord(session.words[session.index]), transcript);
+        },
         onFinal: handleSpellingTranscript,
         onEnd: () => setSpellingListening(false),
         onError: (code, friendly) => {
@@ -2446,14 +2534,14 @@ SAFETY: Keep everything gentle and suitable for ${profile.schoolClass}. Never di
         if (spellingSession === session && !session.stopped) listenForSpelling();
         return;
       }
-      revealSpellingResult(target, parseSpokenLetters(transcript));
+      revealSpellingResult(target, parseSpokenLetters(transcript), transcript);
     }
 
     function spellingLetterHTML(letter, className) {
       return `<span class="spelling-letter ${className}">${escapeHTML(letter || '–')}</span>`;
     }
 
-    function revealSpellingResult(word, answer) {
+    function revealSpellingResult(word, answer, heardTranscript = '') {
       const session = spellingSession;
       if (!session || session.stopped) return;
       const target = normaliseSpellingWord(word);
@@ -2464,7 +2552,7 @@ SAFETY: Keep everything gentle and suitable for ${profile.schoolClass}. Never di
       const answerLetters = [...answer].map((letter, index) => spellingLetterHTML(letter, target[index] === letter ? 'good' : 'missed')).join('') || spellingLetterHTML('–', 'missed');
       $('#spellingMicBtn').hidden = true;
       $('#spellingMicCaption').textContent = correct ? 'Brilliant spelling! 🌟' : 'Good try — look at the letters and remember them.';
-      $('#spellingFeedback').innerHTML = `<strong>${correct ? 'You got it!' : 'Correct spelling:'}</strong><div class="spelling-letters">${correctLetters}</div><small>You said</small><div class="spelling-letters">${answerLetters}</div>`;
+      $('#spellingFeedback').innerHTML = `<strong>${correct ? 'You got it!' : 'Correct spelling:'}</strong><div class="spelling-letters">${correctLetters}</div>${heardTranscript ? `<small>I heard: “${escapeHTML(heardTranscript)}”</small>` : ''}<div class="spelling-letters">${answerLetters}</div>`;
       $('#spellingScore').textContent = `${session.correct} correct`;
       $('#spellingProgressBar').style.width = `${(session.index + 1) / session.words.length * 100}%`;
       $('#nextSpellingBtn').textContent = session.index + 1 === session.words.length ? 'See my result ⭐' : 'Next word ➡️';
@@ -3047,7 +3135,9 @@ SAFETY: Keep everything gentle and suitable for ${profile.schoolClass}. Never di
         captureLog,
         onPrepare: () => { $('#micTestBtn').disabled = true; },
         onStart: () => setStatus($('#micTestStatus'), 'Listening now… / अब बोलें…'),
-        onInterim: () => {},
+        onInterim: (transcript) => {
+          if (transcript) setStatus($('#micTestStatus'), `MIC TEST heard: “${transcript}”`);
+        },
         onFinal: (transcript) => setStatus($('#micTestStatus'), `MIC TEST heard: “${transcript}”`, 'success'),
         onEnd: () => { $('#micTestBtn').disabled = false; },
         onError: (code, friendly) => {
@@ -3314,7 +3404,11 @@ SAFETY: Keep everything gentle and suitable for ${profile.schoolClass}. Never di
         apiUrl: API_URL,
         packCounts: () => Object.fromEntries(allPacks().map((pack) => [pack.id, pack.items.length])),
         compare: (target, heard) => alignWords(target, heard),
+        joinTranscriptParts,
         rebuildCumulativeTranscript,
+        containsTokenSequence,
+        tokenSequenceProgress,
+        findMatchingTranscript,
         parseSpokenLetters,
         transcriptIsWholeWord,
         spellingState: () => ({ results: state.spellingResults, wrongWords: state.spellingWrongWords }),
