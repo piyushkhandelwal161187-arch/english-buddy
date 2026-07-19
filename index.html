@@ -207,7 +207,9 @@
     .mini-progress > span { display: block; width: 0; height: 100%; border-radius: inherit; background: var(--green); }
 
     .practice-card { margin-top: 7px; padding: 18px; text-align: center; }
-    .lesson-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; color: var(--muted); font-size: .82rem; font-weight: 800; }
+    .lesson-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; margin-bottom: 14px; padding: 4px 2px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font: inherit; font-size: .82rem; font-weight: 800; cursor: pointer; }
+    .lesson-meta:hover { background: #f8f6fc; }
+    .lesson-meta:focus-visible { outline: 3px solid rgba(108, 76, 241, .28); outline-offset: 2px; }
     .lesson-progress { flex: 1; height: 8px; overflow: hidden; border-radius: 99px; background: #ebe8f3; }
     .lesson-progress span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--pink), var(--yellow)); transition: width .25s; }
     .target-label { margin: 0; color: var(--purple-dark); font-size: .77rem; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
@@ -216,6 +218,20 @@
     .repeat-hint { margin: -8px auto 14px; color: #765400; font-size: .88rem; font-weight: 900; }
 
     .action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .practice-actions #slowBtn { grid-column: 1 / -1; }
+    .item-navigation { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+    .item-picker-dialog { width: min(92vw, 520px); max-height: 82vh; padding: 0; border: 0; border-radius: 22px; box-shadow: 0 20px 60px rgba(42, 30, 78, .28); }
+    .item-picker-dialog::backdrop { background: rgba(42, 30, 78, .45); }
+    .item-picker-inner { padding: 18px; }
+    .item-picker-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; text-align: left; }
+    .item-picker-heading h3 { margin: 0; }
+    .item-picker-heading p { margin: 3px 0 0; color: var(--muted); font-size: .8rem; font-weight: 700; }
+    .item-picker-list { display: grid; gap: 8px; max-height: 60vh; overflow-y: auto; padding: 2px; overscroll-behavior: contain; }
+    .item-picker-choice { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 52px; padding: 10px 12px; border: 2px solid var(--line); border-radius: 15px; background: var(--white); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+    .item-picker-choice.current { border-color: var(--purple); background: var(--purple-soft); }
+    .item-picker-number { color: var(--purple-dark); font-weight: 900; }
+    .item-picker-text { overflow: hidden; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+    .item-picker-stars { color: var(--muted); font-size: .78rem; font-weight: 800; white-space: nowrap; }
     .btn {
       display: inline-flex;
       align-items: center;
@@ -576,19 +592,22 @@
         </div>
 
         <div class="card practice-card">
-          <div class="lesson-meta">
+          <button class="lesson-meta" id="itemPickerBtn" type="button" aria-haspopup="dialog" aria-controls="itemPickerDialog">
             <span id="itemCounter">1 of 1</span>
-            <div class="lesson-progress" aria-hidden="true"><span id="itemProgressBar"></span></div>
+            <span class="lesson-progress" aria-hidden="true"><span id="itemProgressBar"></span></span>
             <span id="bestStars">New</span>
-          </div>
+          </button>
           <p class="target-label" id="targetLabel">Today's word</p>
           <h2 class="target-text" id="targetText">three</h2>
           <p class="repeat-hint" id="repeatHint" hidden></p>
 
-          <div class="action-grid">
+          <div class="action-grid practice-actions">
             <button class="btn btn-yellow" id="listenBtn" type="button"><span aria-hidden="true">🔊</span> Listen</button>
             <button class="btn btn-primary" id="yourTurnBtn" type="button"><span aria-hidden="true">🎙️</span> Your turn</button>
             <button class="btn btn-outline" id="slowBtn" type="button"><span aria-hidden="true">🐢</span> Hear it slowly</button>
+          </div>
+          <div class="item-navigation">
+            <button class="btn btn-green" id="previousBtn" type="button"><span aria-hidden="true">⬅️</span> Previous</button>
             <button class="btn btn-green" id="nextBtn" type="button"><span aria-hidden="true">➡️</span> Next one</button>
           </div>
 
@@ -600,6 +619,18 @@
             <button class="btn btn-small btn-pink" id="tryAgainBtn" type="button" style="margin-top:10px"><span aria-hidden="true">🔁</span> Try again</button>
           </div>
         </div>
+        <dialog class="item-picker-dialog" id="itemPickerDialog" aria-labelledby="itemPickerTitle">
+          <div class="item-picker-inner">
+            <div class="item-picker-heading">
+              <div>
+                <h3 id="itemPickerTitle">Jump to an item</h3>
+                <p>Choose what to practise / क्या अभ्यास करना है चुनें</p>
+              </div>
+              <button class="btn btn-small btn-outline" id="closeItemPickerBtn" type="button">Close / बंद करें</button>
+            </div>
+            <div class="item-picker-list" id="itemPickerList"></div>
+          </div>
+        </dialog>
         <div class="notice" id="speechNotice">🎙️ Voice checking needs Chrome, microphone permission, and internet. The lessons themselves work offline.</div>
       </section>
 
@@ -1338,6 +1369,7 @@
       $('#itemCounter').textContent = `${index + 1} of ${pack.items.length}`;
       $('#itemProgressBar').style.width = `${(index + 1) / pack.items.length * 100}%`;
       $('#bestStars').textContent = itemProgress.bestStars ? `Best ${'⭐'.repeat(itemProgress.bestStars)}` : 'New';
+      $('#itemPickerBtn').setAttribute('aria-label', `Item ${index + 1} of ${pack.items.length}. Tap to choose an item.`);
       $('#targetLabel').textContent = singleWord ? 'Say it TWO times' : isStory ? 'Read this story' : 'Say this aloud';
       $('#targetText').textContent = target;
       $('#targetText').classList.toggle('story', isStory);
@@ -1361,7 +1393,9 @@
       $('#yourTurnBtn').disabled = listening || !SpeechRecognition || location.protocol === 'file:';
       $('#listenBtn').disabled = listening;
       $('#slowBtn').disabled = listening;
+      $('#previousBtn').disabled = listening || state.practice.itemIndex === 0;
       $('#nextBtn').disabled = listening;
+      $('#itemPickerBtn').disabled = listening;
       $('#practiceHeard').classList.toggle('listening', listening);
       if (listening) $('#practiceHeard').classList.remove('near');
       if (listening) $('#practiceHeard').textContent = 'Listening… say it clearly!';
@@ -2168,11 +2202,47 @@
       });
     }
 
-    function nextPracticeItem() {
+    function goToPracticeItem(itemIndex) {
       const pack = getPack();
-      state.practice.itemIndex = (state.practice.itemIndex + 1) % pack.items.length;
+      state.practice.itemIndex = Math.max(0, Math.min(Number(itemIndex) || 0, pack.items.length - 1));
       saveState();
       renderPracticeItem();
+    }
+
+    function previousPracticeItem() {
+      goToPracticeItem(state.practice.itemIndex - 1);
+    }
+
+    function nextPracticeItem() {
+      const pack = getPack();
+      goToPracticeItem((state.practice.itemIndex + 1) % pack.items.length);
+    }
+
+    function renderItemPicker() {
+      const pack = getPack();
+      $('#itemPickerList').innerHTML = pack.items.map((item, index) => {
+        const progress = getItemProgress(pack.id, index);
+        const starStatus = progress.bestStars ? `${'⭐'.repeat(progress.bestStars)} ${progress.bestStars}/3` : 'New / नया';
+        return `
+          <button class="item-picker-choice ${index === state.practice.itemIndex ? 'current' : ''}" type="button" data-item-index="${index}" aria-current="${index === state.practice.itemIndex ? 'true' : 'false'}">
+            <span class="item-picker-number">${index + 1}</span>
+            <span class="item-picker-text">${escapeHTML(item)}</span>
+            <span class="item-picker-stars">${starStatus}</span>
+          </button>`;
+      }).join('');
+    }
+
+    function openItemPicker() {
+      renderItemPicker();
+      $('#itemPickerDialog').showModal();
+      $('#itemPickerList').querySelector('.current')?.scrollIntoView({ block: 'center' });
+    }
+
+    function choosePracticeItem(event) {
+      const button = event.target.closest('[data-item-index]');
+      if (!button) return;
+      $('#itemPickerDialog').close();
+      goToPracticeItem(button.dataset.itemIndex);
     }
 
     function buildSystemPrompt() {
@@ -3405,7 +3475,14 @@ SAFETY: Keep everything gentle and suitable for ${profile.schoolClass}. Never di
       $('#slowBtn').addEventListener('click', () => speakText(practicePrompt(getPack().items[state.practice.itemIndex]), { slow: true }));
       $('#yourTurnBtn').addEventListener('click', startPracticeListening);
       $('#tryAgainBtn').addEventListener('click', startPracticeListening);
+      $('#previousBtn').addEventListener('click', previousPracticeItem);
       $('#nextBtn').addEventListener('click', nextPracticeItem);
+      $('#itemPickerBtn').addEventListener('click', openItemPicker);
+      $('#closeItemPickerBtn').addEventListener('click', () => $('#itemPickerDialog').close());
+      $('#itemPickerList').addEventListener('click', choosePracticeItem);
+      $('#itemPickerDialog').addEventListener('click', (event) => {
+        if (event.target === $('#itemPickerDialog')) $('#itemPickerDialog').close();
+      });
       $('#startSpellingBtn').addEventListener('click', startSpellingTest);
       $('#stopSpellingBtn').addEventListener('click', stopSpellingTest);
       $('#spellingMicBtn').addEventListener('click', listenForSpelling);
