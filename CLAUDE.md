@@ -37,7 +37,7 @@ Practice (listen/repeat/score drills, packs incl. custom + assignment-generated)
 
 ## Pending / ideas
 
-- **v6 IN FLIGHT (Codex task, 16-Jul):** single-word items prompt 'say it two times' (service drops lone short words); phonetic near-match scoring (lev ratio>=0.67/consonant-skeleton; field confusions packed->ipad, washed->watched => yellow 'so close' retry, 2nd near = 2 stars). WHEN DONE: verify sw.js says v6, commit+push, `curl sw.js | grep v6`, tell user close-reopen-twice.
+- v6+v7 DEPLOYED 16-Jul: v6 = say-it-twice single-word prompt + phonetic near-match (packed/ipad, washed/watched allowlisted, yellow retry, 2nd near = 2 stars); v7 = Previous button + tap-the-progress-row jump-to-item picker. Field: sentences clean; single-word/spelling verdict pending. (was: single-word items prompt 'say it two times' (service drops lone short words); phonetic near-match scoring (lev ratio>=0.67/consonant-skeleton; field confusions packed->ipad, washed->watched => yellow 'so close' retry, 2nd near = 2 stars). )
 
 - User tests v4 on real phone → iterate on feedback (esp. spelling test recognition of letters).
 - Sister deliverable (done): puppet-show kit in `C:\Temp\2026-07-13_keesha_puppet_show\`.
