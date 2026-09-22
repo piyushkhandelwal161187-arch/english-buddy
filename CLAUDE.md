@@ -35,6 +35,8 @@ Practice (listen/repeat/score drills, packs incl. custom + assignment-generated)
 - v1: initial hosted PWA. v2: CSP fix (SW registration). v3: state machine, diagnostics, auto-retry, countdown (regression), continuous mode (dup bug). 
 - **v4 DEPLOYED + verified live 16-Jul-2026:** fixed duplication (cumulative rebuild), removes countdown, adds **Spelling Test mode** (client-driven anti-cheat: app TTS speaks word, never displays it, child spells letter-by-letter, letter-homophone parsing bee→b etc., reveal+per-letter scoring after attempt, results in Parents, wrong words re-queued; entry: Practice card + Buddy chip when assignment/spelling pack exists). v5 DEPLOYED 16-Jul-2026: chain-aware transcript joiner (Android cumulative snapshots) + instant target matching + 2 silent retries. Awaiting field test.
 
+- v8 (built 22-Sep-2026, verified with a headless Chrome test): "Forgot PIN?" on the Parents lock screen. A grown-up check (two-digit multiplication) resets ONLY `settings.pin` to 1234; API key, stars, packs and history are untouched. Built because the changed PIN was lost and the only other recovery was USB remote debugging or clearing site data.
+
 ## Pending / ideas
 
 - v6+v7 DEPLOYED 16-Jul: v6 = say-it-twice single-word prompt + phonetic near-match (packed/ipad, washed/watched allowlisted, yellow retry, 2nd near = 2 stars); v7 = Previous button + tap-the-progress-row jump-to-item picker. Field: sentences clean; single-word/spelling verdict pending. (was: single-word items prompt 'say it two times' (service drops lone short words); phonetic near-match scoring (lev ratio>=0.67/consonant-skeleton; field confusions packed->ipad, washed->watched => yellow 'so close' retry, 2nd near = 2 stars). )

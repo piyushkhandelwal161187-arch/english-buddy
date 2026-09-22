@@ -692,6 +692,15 @@
             <div class="status-line" id="pinStatus" aria-live="polite"></div>
           </form>
           <p class="hint">Default PIN is 1234 / डिफ़ॉल्ट पिन 1234 है</p>
+          <details id="forgotPinBox">
+            <summary>Forgot PIN? / पिन भूल गए?</summary>
+            <p id="forgotPinQuestion"></p>
+            <div class="pin-row">
+              <input id="forgotPinAnswer" type="text" inputmode="numeric" autocomplete="off" maxlength="6" aria-label="Answer / उत्तर">
+              <button class="btn btn-primary" id="forgotPinBtn" type="button">Reset PIN / पिन रीसेट</button>
+            </div>
+            <div class="status-line" id="forgotPinStatus" aria-live="polite"></div>
+          </details>
         </div>
 
         <div id="parentPanel" hidden>
@@ -3460,6 +3469,28 @@ SAFETY: Keep everything gentle and suitable for ${profile.schoolClass}. Never di
       }
     }
 
+    let forgotPinExpected = 0;
+
+    function newForgotPinQuestion() {
+      const a = 12 + Math.floor(Math.random() * 17);
+      const b = 13 + Math.floor(Math.random() * 16);
+      forgotPinExpected = a * b;
+      $('#forgotPinQuestion').textContent = `Grown-up check: what is ${a} × ${b}? / बड़ों के लिए: ${a} × ${b} कितना है?`;
+      $('#forgotPinAnswer').value = '';
+    }
+
+    function resetForgottenPin() {
+      if (Number($('#forgotPinAnswer').value.trim()) !== forgotPinExpected) {
+        setStatus($('#forgotPinStatus'), 'Not correct — try this one. / सही नहीं — यह वाला करें।', 'error');
+        newForgotPinQuestion();
+        return;
+      }
+      state.settings.pin = '1234';
+      saveState();
+      newForgotPinQuestion();
+      setStatus($('#forgotPinStatus'), 'PIN reset to 1234. Nothing else changed. / पिन 1234 हो गया। बाकी सब वैसा ही है।', 'success');
+    }
+
     function lockParents() {
       parentsUnlocked = false;
       $('#apiKeyInput').value = '';
@@ -3495,6 +3526,8 @@ SAFETY: Keep everything gentle and suitable for ${profile.schoolClass}. Never di
       $('#finishBuddyBtn').addEventListener('click', finishBuddySession);
 
       $('#pinForm').addEventListener('submit', unlockParents);
+      $('#forgotPinBtn').addEventListener('click', resetForgottenPin);
+      $('#forgotPinBox').addEventListener('toggle', newForgotPinQuestion);
       $('#lockParentsBtn').addEventListener('click', lockParents);
       $('#saveChildProfileBtn').addEventListener('click', saveChildProfile);
       $('#saveApiBtn').addEventListener('click', saveApiSettings);
